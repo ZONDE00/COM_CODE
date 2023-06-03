@@ -316,7 +316,7 @@ BOARDTRX_Status BOARDTRX_ProcessTx(BOARDTRX_TRX_Target target, uint8_t nr) {
             timeout = brdHandle->cmdTx[nr]->retries = 0;
         }
 
-        timeout = HAL_GetTick() + brdHandle->rxTimeout;
+        timeout = HAL_GetTick() + brdHandle->txTimeout;
         if (target == BOARDTRX_DATA_TX) {
             timeout = brdHandle->dataTx[nr]->timeout = timeout;
         } else {
@@ -339,7 +339,7 @@ BOARDTRX_Status BOARDTRX_ProcessTx(BOARDTRX_TRX_Target target, uint8_t nr) {
             timeout = brdHandle->cmdTx[nr]->retries++;
             retries = brdHandle->cmdTx[nr]->retries;
         }
-        if (retries >= brdHandle->rxRetries) {
+        if (retries >= brdHandle->txRetries) {
             brdState.isNewError = 1;
             brdState.errorsTimeout += 1;
             brdState.errorDataNr = tmp;
@@ -358,7 +358,7 @@ BOARDTRX_Status BOARDTRX_ProcessTx(BOARDTRX_TRX_Target target, uint8_t nr) {
             return brdState;
         } else {
             // send new request to target
-            timeout = HAL_GetTick() + brdHandle->rxTimeout;
+            timeout = HAL_GetTick() + brdHandle->txTimeout;
             if (target == BOARDTRX_DATA_TX) {
                 timeout = brdHandle->dataTx[nr]->timeout = timeout;
             } else {

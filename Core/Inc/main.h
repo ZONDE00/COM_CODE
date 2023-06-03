@@ -58,8 +58,6 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
-void MAIN_HQ_Response();
-
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

@@ -45,6 +45,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 CRC_HandleTypeDef hcrc;
 
 SPI_HandleTypeDef hspi1;
@@ -73,6 +75,8 @@ uint8_t hqGotResponse = 0;
 uint8_t hqData[32];
 uint8_t hqLen;
 
+uint8_t initStatus = 1;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,12 +89,17 @@ static void MX_USART3_UART_Init(void);
 static void MX_USART4_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_CRC_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+float comTemperature = 0;
+float ta;
+float tb;
 
 /* USER CODE END 0 */
 
@@ -128,7 +137,10 @@ int main(void) {
     MX_USART4_UART_Init();
     MX_USART2_UART_Init();
     MX_CRC_Init();
+    MX_ADC1_Init();
     /* USER CODE BEGIN 2 */
+
+    /* TODO LIST ------------------------------------------------------------------*/
 
     // TODO replace while(1) with error management
     // TODO fix GPS baud rate, or dont change it at all, is there need to ?
@@ -169,7 +181,7 @@ int main(void) {
     retVal = SI4463_Init(&SI4463_Handle);
     // check if was able to initialise device
     if (retVal != SI4463_OK) {
-        while (1);
+        initStatus = 0;
     }
 
     /* GSM Configuration--------------------------------------------------------*/
@@ -182,36 +194,37 @@ int main(void) {
     GSM_Handle.RSTPin = GSM_RST_Pin;
 
     if (GSM_Init(&GSM_Handle) == GSM_ERROR) {
-        while (1);
+        initStatus = 0;
     }
 
     GSM_Off();
 
-#if GSM_ENABLED
+    #if GSM_ENABLED
         GSM_Reset();
         HAL_Delay(1000);
         GSM_On();
 
+        // wait for signal
         while (1) {
             if(GSM_Check_Signal() == GSM_OK){
-                //GSM_Check_Signal_Quality();
-                uint8_t testText[] = "Hello World!";
-                GSM_Message_Send(testText, sizeof(testText), 20274672);
+                uint8_t testText[] = "WASSUP STARTING!";
+                GSM_Message_Send(testText, sizeof(testText), 12345678);
                 break;
             }
         }
-    #endif
 
-    GSM_Off();
+        GSM_Off();
+    #endif
 
     /* GPS Configuration--------------------------------------------------------*/
 
-    HAL_Delay(1000);
+    HAL_UART_Abort(&huart2);
 
-    //if (GPS_init_Uart(&huart2) != HAL_OK) {
-        //while (1);
-    //}
+    if (GPS_init_Uart(&huart2) != HAL_OK) {
+        initStatus = 0;
+    }
 
+    // does not work if is not aborted before receive, dunno why
     HAL_UART_Abort(&huart2);
     HAL_UART_Receive_DMA(&huart2, &rxBufGPS, 1);
 
@@ -221,9 +234,9 @@ int main(void) {
     hqHandle.siHandle = &SI4463_Handle;
     hqHandle.uart = &huart4;
 
-    HQ_Init(&hqHandle);
-    // enable interrupt after configuring SI4463 else will hard fault, should check if is initialised
-    HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+    if(HQ_Init(&hqHandle) != HQ_OK){
+        initStatus = 0;
+    }
 
     /* USER CODE END 2 */
 
@@ -231,64 +244,80 @@ int main(void) {
     /* USER CODE BEGIN WHILE */
 
     uint32_t timer = 0;
-    uint32_t errorLedDelay = 200;
-    uint32_t okLedDelay = 1000;
-    uint32_t trxLedDelay = 1000;
+    uint32_t ledTimer = 0;
+    uint32_t ledDelay = 1000;
 
-//    uint8_t rxData[8] = { 0 };
-//    // FSK test
-//    while(1){
-//        SI4463_StatusTypeDef retVal = SI4463_OK;
-//        retVal = SI4463_Receive_FSK(&SI4463_Handle, rxData, 8, 10000);
-//        if(retVal == SI4463_OK){
-//            SI4463_Transmit_FSK(&SI4463_Handle, rxData, 8, 1000);
-//        }
-//    }
+    if(!initStatus){
+        ledDelay = 100;
+    }
 
+    // calculate temperature things
+    float x1 = (float) *TEMPSENSOR_CAL1_ADDR;
+    float x2 = (float) *TEMPSENSOR_CAL2_ADDR;
+    float y1 = (float) TEMPSENSOR_CAL1_TEMP;
+    float y2 = (float) TEMPSENSOR_CAL2_TEMP;
 
+    // Simple linear equation y = ax + b based on two points
+    ta = (float) ((y2 - y1) / (x2 - x1));
+    tb = (float) ((x2 * y1 - x1 * y2) / (x2 - x1));
+
+    HAL_ADC_Start(&hadc1);
 
     while (1) {
 
-        if (timer < HAL_GetTick()) {
-            timer += okLedDelay;
-
-#if DEBUG_ENABLE
+        // quick blink = bad, slow blink = good
+        if(ledTimer < HAL_GetTick()){
+            ledTimer+= ledDelay;
             HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
-            if (debLed[1]) {
-                HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+        }
+
+        if (timer < HAL_GetTick()) {
+            timer += 1000;
+
+            if (HAL_ADC_PollForConversion(&hadc1, 0) == HAL_OK) {
+                uint32_t tmpVal = HAL_ADC_GetValue(&hadc1);
+                HAL_ADC_Start(&hadc1);
+                comTemperature = ta * (float) tmpVal + tb;
             }
-            if (debLed[2]) {
-                HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-            }
-            if (debLed[3]) {
-                HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-            }
 
-            bigBoi[0] = GPS_IsData();
-            if (bigBoi[0] == GPS_OK) {
 
-                debLed[1] = 1;
+            #if DEBUG_ENABLE
+                HAL_GPIO_TogglePin(LED0_GPIO_Port, LED0_Pin);
+                if (debLed[1]) {
+                    HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+                }
+                if (debLed[2]) {
+                    HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+                }
+                if (debLed[3]) {
+                    HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
+                }
 
-                GPS_GetTime(bigBoi);
-                printf("Time\n\r");
-                printf(bigBoi);
-                printf("\n\r");
+                bigBoi[0] = GPS_IsData();
+                if (bigBoi[0] == GPS_OK) {
 
-                GPS_GetLat(bigBoi);
-                printf("Lat:");
-                printf(bigBoi);
-                printf("\n\r");
+                    debLed[1] = 1;
 
-                printf("Lon:");
-                GPS_GetLon(bigBoi);
-                printf(bigBoi);
-                printf("\n\r");
+                    GPS_GetTime(bigBoi);
+                    printf("Time\n\r");
+                    printf(bigBoi);
+                    printf("\n\r");
 
-                HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-            } else {
-                printf("No GPS data %ld \n\r", HAL_GetTick());
-            }
-#endif
+                    GPS_GetLat(bigBoi);
+                    printf("Lat:");
+                    printf(bigBoi);
+                    printf("\n\r");
+
+                    printf("Lon:");
+                    GPS_GetLon(bigBoi);
+                    printf(bigBoi);
+                    printf("\n\r");
+
+                    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+                } else {
+                    printf("No GPS data %ld \n\r", HAL_GetTick());
+                }
+            #endif
         }
 
         // process RX data and anything else we need to do
@@ -335,6 +364,62 @@ void SystemClock_Config(void) {
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
         Error_Handler();
     }
+}
+
+/**
+ * @brief ADC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC1_Init(void) {
+
+    /* USER CODE BEGIN ADC1_Init 0 */
+
+    /* USER CODE END ADC1_Init 0 */
+
+    ADC_ChannelConfTypeDef sConfig = { 0 };
+
+    /* USER CODE BEGIN ADC1_Init 1 */
+
+    /* USER CODE END ADC1_Init 1 */
+
+    /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+     */
+    hadc1.Instance = ADC1;
+    hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+    hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+    hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+    hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+    hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+    hadc1.Init.LowPowerAutoWait = DISABLE;
+    hadc1.Init.LowPowerAutoPowerOff = DISABLE;
+    hadc1.Init.ContinuousConvMode = DISABLE;
+    hadc1.Init.NbrOfConversion = 1;
+    hadc1.Init.DiscontinuousConvMode = DISABLE;
+    hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+    hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+    hadc1.Init.DMAContinuousRequests = DISABLE;
+    hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+    hadc1.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_160CYCLES_5;
+    hadc1.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_160CYCLES_5;
+    hadc1.Init.OversamplingMode = DISABLE;
+    hadc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
+    if (HAL_ADC_Init(&hadc1) != HAL_OK) {
+        Error_Handler();
+    }
+
+    /** Configure Regular Channel
+     */
+    sConfig.Channel = ADC_CHANNEL_TEMPSENSOR;
+    sConfig.Rank = ADC_REGULAR_RANK_1;
+    sConfig.SamplingTime = ADC_SAMPLINGTIME_COMMON_1;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+        Error_Handler();
+    }
+    /* USER CODE BEGIN ADC1_Init 2 */
+
+    /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -634,15 +719,11 @@ static void MX_GPIO_Init(void) {
 
     /* EXTI interrupt init*/
     HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
-    //HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+    HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
 
 }
 
 /* USER CODE BEGIN 4 */
-
-void MAIN_HQ_Response() {
-    hqGotResponse = 1;
-}
 
 void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == SPI1_IRQ_Pin) {

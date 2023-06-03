@@ -159,8 +159,8 @@ typedef struct {
 
     UART_HandleTypeDef *uart; // communication handle with target device
 
-    uint8_t rxRetries; // how many times will retry to receive data before giving up, default 3
-    uint32_t rxTimeout; // time in which will rx timeout in ms, default 20'000
+    uint8_t txRetries; // how many times will retry to receive data before giving up, default 3
+    uint32_t txTimeout; // time in which will rx timeout in ms, default 20'000
 
     void (*TX_COMPLETE_CB)(); // callback when target requested data was sent, not mandatory
     void (*RX_COMPLETE_CB)(); // callback when requested data was received, not mandatory

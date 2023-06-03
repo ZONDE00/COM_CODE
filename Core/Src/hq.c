@@ -11,7 +11,6 @@
 #include "gps.h"
 #include "boardtrx.h"
 
-// TODO checksums might not be needed as SI4463 already sends 16 bit CRC
 // TODO check max tick time, multiply by 10 and implement WDT
 // TODO get time from GPS
 
@@ -71,7 +70,7 @@ BOARDTRX_TX_Data mcuTxTemp = { 0 };
 BOARDTRX_TX_Data mcuTxTemporary = { 0 };
 BOARDTRX_TX_Data *txDataArray[(HQ_VARS_TOTAL_SIZE - HQ_VARS_LOCAL_LIMIT) - 1] =
         { &mcuTxBatVolt, &mcuTx4vCurr, &mcuTx3v3Curr, &mcuTxTemp, &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary,
-                &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary };
+                &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary, &mcuTxTemporary };
 
 BOARDTRX_RX_Data comRxGpsLong = { 0 };
 BOARDTRX_RX_Data comRxGpsLat = { 0 };
@@ -100,40 +99,13 @@ extern uint8_t gpsData[24];    //0 coord latitude //1 coord longitude "05723.064
 extern uint8_t gpsHeight[8];   //2 height
 extern uint8_t gpsSpeed[7];    //3 speed
 extern uint8_t gpsTime[6];     // UTC time from GPGGA
-
-//uint8_t gpsAlt[32];
-//uint8_t gpsSpe[8];
-//uint32_t mcuTemp = 0;
-
-//HQ_VARS_RX_LONGITUDE,
-//HQ_VARS_RX_LATITUDE,
-//HQ_VARS_RX_ALTITUDE,
-//HQ_VARS_RX_SPEED,
-//HQ_VARS_RX_TIME
-//HQ_VARS_RX_MCU_TEMP,
-//HQ_VARS_RX_CMD_OK,
-//HQ_VARS_RX_CMD_NCK,
-//HQ_VARS_RX_CMD_CRC,
-
-//HQ_VARS_TX_BAT_VOLT,
-//HQ_VARS_TX_4V_CUR,
-//HQ_VARS_TX_3V3_CUR,
-//HQ_VARS_TX_3V3,
-//HQ_VARS_TX_4V,
-//HQ_VARS_TX_TMP_MCU,
-//HQ_VARS_TX_TMP_IN,
-//HQ_VARS_TX_TMP_OUT,
-//HQ_VARS_TX_PRESSURE,
-//HQ_VARS_TX_HUMID,
-//HQ_VARS_TX_AIRQ,
-//HQ_VARS_TX_SEN_STATUS,
+extern float comTemperature;   // temperature of COM microcontroller
 
 float testVar = 1.234567890;
 uint32_t testVar1 = 111222333;
 
-//uint8_t varTypes[HQ_VARS_TOTAL_SIZE - 1] = { 0 };
-uint8_t varSize[HQ_VARS_TOTAL_SIZE - 1] = { 12, 12, 8, 7, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4 };
-uint8_t *varPointers[HQ_VARS_TOTAL_SIZE - 1] = { gpsData, &gpsData[12], gpsHeight, gpsSpeed, gpsTime, (uint8_t*) &testVar, (uint8_t*) &STATS_CMD_ACK,
+uint8_t varSize[HQ_VARS_TOTAL_SIZE - 1] = { 12, 12, 8, 7, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4 };
+uint8_t *varPointers[HQ_VARS_TOTAL_SIZE - 1] = { gpsData, &gpsData[12], gpsHeight, gpsSpeed, gpsTime, (uint8_t*) &comTemperature, (uint8_t*) &STATS_CMD_ACK,
         (uint8_t*) &STATS_CMD_NCK, (uint8_t*) &STATS_CMD_CRC, (uint8_t*) &STATS_CMD_TMO,
         // end of local variables, start of mcu variables
         (uint8_t*) &bat_v, (uint8_t*) &i4, (uint8_t*) &i3_3, (uint8_t*) &temp, (uint8_t*) &testVar1, (uint8_t*) &testVar1, (uint8_t*) &testVar1,
@@ -156,13 +128,11 @@ uint8_t cmdReqState = 0;
  * @retval value of initialization status
  */
 HQ_StatusTypeDef HQ_Init(HQ_Handle *handle) {
-    HQ_StatusTypeDef retVal = HQ_OK;
-
     hqHandle = handle;
 
     // first thing we should do is go into RX mode
     if (SI4463_Receive_FSK_IRQ(hqHandle->siHandle) != SI4463_OK) {
-        retVal |= HQ_ERROR_SI;
+        return HQ_ERROR_SI;
     }
 
     // initialize shared variables rx
@@ -218,13 +188,13 @@ HQ_StatusTypeDef HQ_Init(HQ_Handle *handle) {
     mcuTxBurn.size = 1;
 
     // this is what we can request
-    mcuTrxHandle.countDataTx = 12;
+    mcuTrxHandle.countDataTx = (HQ_VARS_TOTAL_SIZE - HQ_VARS_LOCAL_LIMIT) - 1;
     mcuTrxHandle.dataTx = txDataArray;
     // some timings
-    mcuTrxHandle.rxRetries = 3;
-    mcuTrxHandle.rxTimeout = 20000;
+    mcuTrxHandle.txRetries = 3;
+    mcuTrxHandle.txTimeout = 20000;
     // this is what can be requested from us
-    mcuTrxHandle.countDataRx = 10;
+    mcuTrxHandle.countDataRx = HQ_VARS_LOCAL_LIMIT;
     mcuTrxHandle.dataRx = rxDataArray;
     // this is commands that can be sent to be executed
     mcuTrxHandle.cmdTx = txCmdArray;
@@ -232,12 +202,17 @@ HQ_StatusTypeDef HQ_Init(HQ_Handle *handle) {
     // other config
     mcuTrxHandle.uart = handle->uart;
 
+    // TODO process ret
     BOARDTRX_Status ret;
     ret = BOARDTRX_Init(&mcuTrxHandle);
 
+    if(ret.isNewError){
+        return HQ_ERROR;
+    }
+
     initialised = 1;
 
-    return retVal;
+    return HQ_OK;
 }
 
 #if DEBUG_ENABLE
@@ -367,10 +342,6 @@ void HQ_CMD_Process() {
         cmdReqState = 0;
         HQ_CMD_Send(HQ_CMD_STATUS_SIZE);
 
-//    } else if (cmdReqState == 7) {
-//        // invalid cmd data size
-//        cmdReqState = 0;
-//        HQ_CMD_Send(HQ_CMD_STATUS_SIZE);
     } else if (cmdReqState >= HQ_CMD_STATUS_NR) {
         // invalid cmd data size
         cmdReqState = 0;
@@ -438,88 +409,6 @@ uint8_t HQ_CMD_Send(HQ_CmdStatusTypeDef status) {
     HQ_SI_Send(tmp, 8);
 
     return 1;
-}
-
-/*
- * @Brief Sends data packet
- * @Param data pointer to data to send
- * @Param size size of data to send
- */
-HQ_StatusTypeDef HQ_UART_Send_Packet(uint8_t *data, uint8_t size) {
-    uint8_t tmp[255];
-
-    // add start byte
-    tmp[0] = HQ_UART_START_BYTE;
-    tmp[1] = size;
-
-    // copy data to send
-    memcpy(&tmp[2], data, size);
-
-    uint16_t tmpCrc = HQ_CalcCRC(data, size);
-    // add crc
-    tmp[size + 2] = tmpCrc >> 8;
-    tmp[size + 3] = tmpCrc & 0xff;
-
-    // transmit
-    if (HAL_UART_Transmit(hqHandle->uart, tmp, size + 4, 100) == HAL_OK) {
-        return HQ_OK;
-    }
-
-    return HQ_ERROR;
-}
-
-/*
- * @Brief Requests specified cmd
- * @Param cmd pointer to data to send
- * @Param len length of cmd
- * @Param buf pointer where to store received data
- * @Param rLen pointer where received length of data will be written
- * @Retval status of request
- */
-HQ_StatusTypeDef HQ_UART_Request(uint8_t *cmd, uint8_t len, uint8_t *buf, uint8_t *rLen) {
-    // send cmd
-    HQ_UART_Send_Packet(cmd, len);
-
-    // get response
-    if (uartRxToReceive) {
-        if (HQ_UART_Receive_Packet() == HQ_OK) {
-            // check crc
-            //uint8_t tmpCrc = HQ_CalcCRC(uartRxBuf, uartRxToReceive);
-            //if (uartRxBuf[uartRxToReceive] != (tmpCrc >> 8) || uartRxBuf[uartRxToReceive + 1] != (tmpCrc & 0xff)) {
-            //    return HQ_ERROR_CMD;
-            //}
-            if (uartRxBuf[1] == HQ_CMD_RX_NCK) {
-                return HQ_ERROR_CMD;
-            }
-
-        }
-    }
-    return HQ_OK;
-}
-
-/*
- * @Brief Gets whole data packet
- */
-HQ_StatusTypeDef HQ_UART_Receive_Packet() {
-
-    if (uartRxLen == 255) {
-        if (uartMiniBuf == HQ_UART_START_BYTE) {
-            uartRxLen = 0;
-        }
-    } else {
-        uartRxBuf[uartRxLen] = uartMiniBuf;
-        uartRxLen++;
-        if (uartRxLen == 1) {
-            uartRxToGet = uartMiniBuf;
-        }
-    }
-
-    if ((uartRxLen + 2) == uartRxToGet) {
-        uartRxLen = 255;
-        return HQ_OK;
-    }
-
-    return HQ_BUSY;
 }
 
 HQ_StatusTypeDef HQ_SI_Process_Data() {
@@ -644,10 +533,6 @@ HQ_StatusTypeDef HQ_SI_Send(uint8_t *data, uint8_t size) {
     return HQ_OK;
 }
 
-// gets received data and puts it in rxBufQue
-void HQ_UART_RX_CallBack() {
-    //uartRxToReceive = 1;
-}
 
 // gets received data and puts it in rxBufQue
 void HQ_SI_RX_CallBack() {
@@ -667,10 +552,5 @@ uint16_t HQ_CalcCRC(uint8_t *data, uint8_t size) {
     }
 
     return (crc_a << 8) + crc_b;
-}
-
-// runs when got response from UART
-void HQ_UART_RequestCallBack() {
-    //MAIN_HQ_Response();
 }
 

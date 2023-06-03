@@ -17,9 +17,6 @@ typedef enum {
     GS_COM_VAR,
     GS_COM_VAR_RES,
     GS_COM_CMD,
-//    GS_COM_PING,            // this for GS only
-//    GS_COM_CMDS_TOTAL_SIZE, // more like count of how many cmds there are, for checking bounds
-//
     GS_COM_ACK = 0xAA,
     GS_COM_NCK,
     GS_COM_UNK,
@@ -45,21 +42,26 @@ typedef enum {
     HQ_VARS_TX_4V_CUR,
     HQ_VARS_TX_3V3_CUR,
     HQ_VARS_TX_3V3,
-    HQ_VARS_TX_4V,
     HQ_VARS_TX_TMP_MCU,
-    HQ_VARS_TX_TMP_IN,
+    HQ_VARS_TX_TMP_IN ,
     HQ_VARS_TX_TMP_OUT,
+    HQ_VARS_TX_TMP_BME,
     HQ_VARS_TX_PRESSURE,
     HQ_VARS_TX_HUMID,
     HQ_VARS_TX_AIRQ,
+    HQ_VARS_TX_AIR_RES,
     HQ_VARS_TX_SEN_STATUS,
 
     HQ_VARS_TOTAL_SIZE  // cant be larger than 32
+
 } HQ_VARS_SI;
 
 typedef enum {
-    HQ_CMD_RX_NCK,
-    HQ_CMD_RX_ACK,
+    HQ_CMD_NCK,
+    HQ_CMD_ACK,
+} HQ_Commands;
+
+typedef enum {
     HQ_CMD_RX_TIME,
     HQ_CMD_RX_LONGITUDE,
     HQ_CMD_RX_LATITUDE,
@@ -74,18 +76,18 @@ typedef enum {
 } HQ_Commands_RX;
 
 typedef enum {
-    HQ_CMD_TX_NCK,
-    HQ_CMD_TX_ACK,
     HQ_CMD_TX_BAT_VOLT,
     HQ_CMD_TX_4V_CUR,
     HQ_CMD_TX_3V3_CUR,
     HQ_CMD_TX_3V3,
     HQ_CMD_TX_TMP_MCU,
-    HQ_CMD_TX_TMP_IN,
+    HQ_CMD_TX_TMP_IN ,
     HQ_CMD_TX_TMP_OUT,
+    HQ_CMD_TX_TMP_BME,
     HQ_CMD_TX_PRESSURE,
     HQ_CMD_TX_HUMID,
     HQ_CMD_TX_AIRQ,
+    HQ_CMD_TX_AIR_RES,
     HQ_CMD_TX_SEN_STATUS,
     HQ_CMD_TX_END
 } HQ_Commands_TX;
@@ -123,11 +125,6 @@ typedef struct {
 HQ_StatusTypeDef HQ_Init(HQ_Handle *handle);
 
 HQ_StatusTypeDef HQ_Loop();
-HQ_StatusTypeDef HQ_UART_Receive_Packet();
-HQ_StatusTypeDef HQ_UART_Process_Packet();
-HQ_StatusTypeDef HQ_UART_Send_Packet(uint8_t *data, uint8_t size);
-HQ_StatusTypeDef HQ_UART_Request(uint8_t *cmd, uint8_t len, uint8_t *buf, uint8_t *rLen);
-void HQ_UART_RequestCallBack();
 HQ_StatusTypeDef HQ_SI_Process_Data();
 HQ_StatusTypeDef HQ_SI_Send(uint8_t *data, uint8_t size);
 
@@ -138,7 +135,6 @@ uint8_t HQ_CMD_Send(HQ_CmdStatusTypeDef status);
 
 uint16_t HQ_CalcCRC(uint8_t *data, uint8_t size);
 
-void HQ_UART_RX_CallBack();
 void HQ_SI_RX_CallBack();
 
 #endif /* INC_HQ_H_ */

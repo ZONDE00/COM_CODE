@@ -191,22 +191,18 @@ GPS_StatusTypeDef GPS_SetDynamicModel(GPS_MODEL_StatusTypeDef model) {
 
     // get response
     uint32_t endTime = HAL_GetTick() + timeout;
-    uint8_t counter = 0;
-    uint8_t ackHeader[4] = {0xB5, 0x62, 0x05, 0x01};
-    while(1){
-        // get first four bytes of ack frame, we are skipping rest of ack frame
-        if (HAL_UART_Receive(GPS_uart, data + counter, 1, timeout) == HAL_OK) {
-            if(data[counter] == ackHeader[counter]){
-                counter++;
-                if(counter == 4){
-                    break;
-                }
-            }else{
+    uint8_t ackHeader[4] = { 0xB5, 0x62, 0x05, 0x01 };
+    while (1) {
+        // get first four bytes of ack frame, we are skipping rest of ack frame as its not important
+        if (HAL_UART_Receive(GPS_uart, data, 4, timeout) == HAL_OK) {
+            if (memcmp(data, ackHeader, 4) == 0) {
+                break;
+            } else {
                 counter = 0;
             }
         }
 
-        if(endTime < HAL_GetTick()){
+        if (endTime < HAL_GetTick()) {
             return GPS_ERROR;
         }
     }
