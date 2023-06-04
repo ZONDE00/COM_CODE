@@ -140,6 +140,10 @@ int main(void) {
     MX_ADC1_Init();
     /* USER CODE BEGIN 2 */
 
+
+    // wait for things to start
+    HAL_Delay(500);
+
     /* TODO LIST ------------------------------------------------------------------*/
 
     // TODO replace while(1) with error management

@@ -197,8 +197,6 @@ GPS_StatusTypeDef GPS_SetDynamicModel(GPS_MODEL_StatusTypeDef model) {
         if (HAL_UART_Receive(GPS_uart, data, 4, timeout) == HAL_OK) {
             if (memcmp(data, ackHeader, 4) == 0) {
                 break;
-            } else {
-                counter = 0;
             }
         }
 
