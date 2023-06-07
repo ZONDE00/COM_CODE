@@ -29,10 +29,6 @@
 *.m
 *.png
 
-# Eclipse CDT project files
-.cproject
-.project
-.settings/
 Debug/
 
 # Vagrant directory
